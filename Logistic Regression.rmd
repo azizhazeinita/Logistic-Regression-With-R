@@ -1,0 +1,150 @@
+#1. Use diabetes dataset from canvas. Readmitted is dependent variable.
+```{r}
+df <- read.csv("/Users/azizhazeinita/Documents/S2 Uchicago/MScA/Winter 2022 - 2nd Quarter/Data Mining Principles/Assignment 4 - Data Mining Principles/Diabetese Dataset Files/diabetes_data.csv")
+df_1 <- read.csv("/Users/azizhazeinita/Documents/S2 Uchicago/MScA/Winter 2022 - 2nd Quarter/Data Mining Principles/Assignment 4 - Data Mining Principles/Diabetese Dataset Files/diabetes_data.csv")
+colSums(is.na(df))
+df <- na.omit(df)
+colSums(is.na(df_1))
+df <- na.omit(df_1)
+```
+
+#2. Merge the < 30 days and > 30 days values to “Yes”. For logistic regression dependent variable should be binary.
+```{r}
+df_readmitted <- df_1['readmitted']  
+df_readmitted['readmitted'][df_readmitted['readmitted'] == '<30'] <- 'Yes'
+df_readmitted['readmitted'][df_readmitted['readmitted'] == '>30'] <- 'Yes'
+
+# Changing diag_1, diag_2, diag_3 type into float
+df_diag <- df_1[c('diag_1','diag_2','diag_3')]
+str(df_diag)
+sum(is.na(df_diag))
+df_diag$diag_1 <- gsub("[^0-9.-]", "", df_diag$diag_1)
+df_diag$diag_1 <- as.double(df_diag$diag_1)
+df_diag$diag_2 <- gsub("[^0-9.-]", "", df_diag$diag_2)
+df_diag$diag_2 <- as.double(df_diag$diag_2)
+df_diag$diag_3 <- gsub("[^0-9.-]", "", df_diag$diag_3)
+df_diag$diag_3 <- as.double(df_diag$diag_3)
+```
+
+#3. Dummy/oneHot encode categorical variables. (One hot encode on whole dataset and then use for splitting)
+```{r}
+df[c('readmitted','diag_1','diag_2','diag_3')] <- NULL
+
+library(caret)
+
+dummy <- dummyVars(" ~ .", data=df) #define one-hot encoding function
+final_df <- data.frame(predict(dummy, newdata=df)) #perform one-hot encoding on data frame
+
+unique(df_readmitted)
+df_readmitted$readmitted = factor(df_readmitted$readmitted, levels = c('Yes', 'NO'),labels = c(1, 0))
+
+final_df['readmitted'] <- df_readmitted
+final_df['diag_1'] <- df_diag$diag_1
+final_df['diag_2'] <- df_diag$diag_2
+final_df['diag_3'] <- df_diag$diag_3
+
+str(final_df)
+```
+
+# Separate dataset into train and test samples (70:30). Using set.seed (R)/ random_state (Python) while splitting. 
+```{r}
+smp_size <- floor(0.7 * nrow(final_df)) #70% data train
+set.seed(123) # set the seed to make your partition reproducible
+train_ind <- sample(seq_len(nrow(final_df)), size = smp_size)
+
+train <- final_df[train_ind, ]
+test <- final_df[-train_ind, ]
+str(final_df)
+```
+
+#5. Build logistic regression model on Train Data set - Use below steps for reference.
+```{r}
+model <- glm(readmitted~., data=train, family=binomial(link=logit))
+p_value <- summary(model)$coefficients[,4]  
+column <- all.vars(formula(model)[-2])
+#p_value[p_value < 0.05]
+chosen <- data.frame(column[p_value < 0.05])
+col_chosen <- na.omit(chosen)
+
+#Choose only significant variables to save time for running the model
+step_data <- data.frame(train[c('raceAfricanAmerican','raceAsian','raceHispanic', 'raceOther',
+                                'genderMale', 'age.10.20.', 'age.20.30.', 'age.30.40.', 'age.40.50.', 'age.50.60.', 'age.60.70.',
+                                'age.70.80.', 'age.80.90.', 'age.90.100.','time_in_hospital', 'num_lab_procedures','num_procedures',
+                                'num_medications','number_outpatient', 'number_inpatient','number_diagnoses', 'max_glu_serum.300', 
+                                'max_glu_serumNone','A1Cresult.7', 'A1CresultNorm', 'metforminNo', 'metforminSteady',
+                                'metforminUp', 'chlorpropamideNo', 'acetohexamideSteady', 'glipizideDown', 'pioglitazoneNo',
+                                'pioglitazoneSteady', 'rosiglitazoneUp', 'acarboseDown', 'acarboseUp', 'miglitolUp', 'troglitazoneNo',
+                                'tolazamideNo', 'tolazamideUp', 'insulinDown', 'insulinNo', 'glyburide.metforminNo',
+                                'glyburide.metforminSteady', 'glyburide.metforminUp', 'glipizide.metforminNo', 'glipizide.metforminSteady',
+                                'glimepiride.pioglitazoneNo', 'metformin.pioglitazoneNo', 'metformin.pioglitazoneSteady', 'diabetesMedNo',
+                                'diabetesMedYes', 'diag_1', 'diag_2', 'diag_3', 'readmitted')])
+
+model2 <- glm(readmitted~., data=step_data, family=binomial(link=logit))
+
+
+library(MASS)
+stepAIC(model2, direction=c("both"))
+
+model_final <- glm(formula = readmitted ~ raceAfricanAmerican + raceAsian + 
+                     raceHispanic + raceOther + genderMale + age.10.20. + age.20.30. + 
+                     age.30.40. + age.40.50. + age.50.60. + age.60.70. + age.70.80. + 
+                     age.80.90. + age.90.100. + time_in_hospital + num_lab_procedures + 
+                     num_procedures + num_medications + number_outpatient + number_inpatient + 
+                     number_diagnoses + max_glu_serum.300 + max_glu_serumNone + 
+                     A1Cresult.7 + A1CresultNorm + metforminNo + metforminSteady + 
+                     metforminUp + chlorpropamideNo + acetohexamideSteady + glipizideDown + 
+                     pioglitazoneNo + pioglitazoneSteady + rosiglitazoneUp + acarboseDown + 
+                     acarboseUp + miglitolUp + troglitazoneNo + tolazamideNo + 
+                     tolazamideUp + insulinDown + insulinNo + glyburide.metforminNo + 
+                     glyburide.metforminSteady + glyburide.metforminUp + glipizide.metforminNo + 
+                     metformin.pioglitazoneSteady + diabetesMedNo + diag_1 + diag_2 + 
+                     diag_3, family = binomial(link = logit), data = step_data)
+```
+
+#6. Generate confusion matrix on train dataset. Table (predictions, actual readmitted colums), metrics.confusion_matrix
+```{r}
+#Choosing threshold
+cutoffs <- seq(0.1,0.9,0.1)
+accuracy <- NULL
+for (i in seq(along = cutoffs)){
+  prediction <- ifelse(model_final$fitted.values >= cutoffs[i], 1, 0) #Predicting for cut-off
+  accuracy <- c(accuracy,length(which(train$readmitted ==prediction))/length(prediction)*100)
+}
+
+plot(cutoffs, accuracy, pch =19,type='b',col= "steelblue",
+    main ="Logistic Regression", xlab="Cutoff Level", ylab = "Accuracy %")
+
+#maximum threshold = 0.7
+
+#Making Confussion Matrix
+#Benchmark 1: using result of heuristic method, threshold = 0.7
+xp=model_final$fitted.values
+xp[xp>=0.7]=1
+xp[xp<0.7]=0
+table(xp,train$readmitted)
+round(prop.table(table(xp,train$readmitted),1),2)
+
+#Benchmark 2: using default threshold =  0.5
+xp=model_final$fitted.values
+xp[xp>=0.5]=1
+xp[xp<0.5]=0
+table(xp,train$readmitted)
+round(prop.table(table(xp,train$readmitted),1),2)
+
+#The result of threshold default=0.5 is more equal between TP and TN compared to threshold from heuristic method = 0.7
+```
+
+#7. After you’ve decided your classification bound, predict test results and assign ‘No’ or ‘Yes’ to each observation based on your classification bound. 
+#Type = “class”. Generate confusion matrix on test set.
+```{r}
+probsTest1 <- predict.glm(model_final,data=test, type = "response")
+probsTest <- data.frame(probsTest1)
+threshold <- 0.5
+pred      <- factor( ifelse(probsTest[,1] > threshold, 1, 0) )
+pred      <- relevel(pred, 1)   
+
+confusionMatrix(pred, train$readmitted)
+```
+
+#8. Compare proportion of 0s (No) and 1s (Yes) predicted correctly in train and test. Is there stability?
+#Yes, the confusion matrix between train and test dataset are the same.
